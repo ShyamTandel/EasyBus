@@ -1,0 +1,154 @@
+{% load customfilter %}
+{% load humanize %}
+
+<style>
+    .seat-checkbox {
+        margin-bottom: 10px;
+    }
+    .seat-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px; /* Space between seat groups */
+        margin-bottom: 20px; /* Space between rows */
+    }
+    .seat-group {
+        display: flex;
+        gap: 30px; /* Space between seats in a pair */
+    }
+</style>
+
+<div class="container-fluid">
+    <form action="" id="book-form">
+        {% csrf_token %}
+        <input type="hidden" name="id" value="{{ book.id }}">
+        <input type="hidden" name="code" value="1">
+        <input type="hidden" name="schedule" value="{{ schedule.id }}">
+        <div class="form-group mb-3">
+            <label for="name" class="control-label">Full Name</label>
+            <input class="form-control rounded-0" name="name" id="name" type="text" value="{{ book.name }}" required>
+        </div>
+        <div class="form-group mb-3">
+            <div class="seat-row">
+                {% for seat in schedule.seats.all %}
+                <div class="seat-group">
+                    <div class="seat-checkbox">
+                        <input type="checkbox" name="all_seats" value="{{ seat.id }}" {% if seat.is_booked %} checked disabled {% endif %}>{{ seat.seat_number }}
+                    </div>
+                    {% if forloop.counter|divisibleby:"2" and not forloop.last %}
+                        <div style="width: 50px;"></div> <!-- Spacer between seat pairs -->
+                    {% endif %}
+                </div>
+                {% if forloop.counter|divisibleby:"4" and not forloop.last %}
+                    </div><div class="seat-row">
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="form-group mb-3">
+            <label for="fare" class="control-label">Fare</label>
+            <input class="form-control rounded-0 text-end" id="fare" type="text" value="{{ schedule.fare|intcomma }}" disabled>
+        </div>
+        <div class="form-group mb-3">
+            <label for="payable" class="control-label">Payable Amount</label>
+            <input class="form-control rounded-0 text-end" name="payable" id="payable" type="text" value="{% if book.total_payable %}{{ book.total_payable }}{% else %}0.00{% endif %}" disabled>
+        </div>
+    </form>
+</div>
+
+
+<script>
+
+
+$(function() {
+    // Function to calculate total payable amount
+    function calculateTotal() {
+        var fare = parseFloat($('#fare').val().replace(/,/g, '')); // Remove commas and parse as float
+        var totalSeats = $('input[name="all_seats"]:checked').length;
+        var total = fare * totalSeats;
+        $('#payable').val(total.toLocaleString('en-US'));
+    }
+
+    $('#payable').val('0.00');
+    // Update total when checkboxes change
+    $('input[name="all_seats"]').change(function() {
+        calculateTotal();
+    });
+
+    // Initial calculation on page load
+    calculateTotal();
+
+});
+
+
+
+    $(function() {
+        // Function to update the payable amount
+        function updatePayableAmount() {
+            var fare = parseFloat($('#fare').val().replace(/[^0-9.-]+/g,""));
+            var disable  = $('input[name="all_seats"]:disabled').length; // Remove non-numeric characters
+            var totalSeats = $('input[name="all_seats"]:checked').length;
+            var totalAmount = (fare * totalSeats)- (fare * disable);
+            $('#payable').val(totalAmount.toFixed(2)); // Set the total amount in the payable input
+        }
+        // Set initial payable amount to 0
+        $('#payable').val('0.00');
+        // Call the updatePayableAmount function whenever a seat is checked or unchecked
+        $('input[name="all_seats"]').on('change', updatePayableAmount);
+
+        // Initialize payable amount
+        updatePayableAmount();
+
+        // Rest of your existing code...
+        $('#category').select2({
+            width: "100%",
+            placeholder: "Please Select Category Here",
+            dropdownParent: $('#uni_modal')
+        });
+        $('#book-form').submit(function(e) {
+            e.preventDefault();
+            var _this = $(this);
+            $('.err-msg').remove();
+            var el = $('<div>');
+            el.addClass("alert alert-danger err-msg");
+            el.hide();
+            if (_this[0].checkValidity() == false) {
+                _this[0].reportValidity();
+                return false;
+            }
+            start_loader();
+            $.ajax({
+                url: "{% url 'save-book' %}",
+                data: new FormData($(this)[0]),
+                cache: false,
+                contentType: false,
+                processData: false,
+                method: 'POST',
+                type: 'POST',
+                dataType: 'json',
+                error: err => {
+                    console.log(err);
+                    alert("An error occurred", 'error');
+                    end_loader();
+                },
+                success: function(resp) {
+                    if (typeof resp == 'object' && resp.status == 'success') {
+                        el.removeClass("alert alert-danger err-msg ")
+                        location.reload();
+                    } else if (resp.status == 'failed' && !!resp.msg) {
+                        el.html(resp.msg);
+                    } else {
+                        el.text("An error occurred", 'error');
+                        end_loader();
+                        console.err(resp);
+                    }
+                    _this.prepend(el);
+                    el.show('slow');
+                    $("html, body, .modal ").scrollTop(0);
+                    end_loader();
+                }
+            });
+        });
+    });
+
+
+</script>
